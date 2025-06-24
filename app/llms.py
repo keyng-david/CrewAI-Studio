@@ -4,6 +4,7 @@ import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
 from crewai import LLM
 
 def load_secrets_fron_env():
@@ -16,6 +17,7 @@ def load_secrets_fron_env():
             "LMSTUDIO_API_BASE": os.getenv("LMSTUDIO_API_BASE"),
             "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY"),
             "OLLAMA_HOST": os.getenv("OLLAMA_HOST"),
+            "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY"),
         }
     else:
         st.session_state.env_vars = st.session_state.env_vars
@@ -76,17 +78,33 @@ def create_groq_llm(model, temperature):
     else:
         raise ValueError("Groq API key not set in .env file")
 
+def create_google_llm(model, temperature):
+    switch_environment({
+        "GOOGLE_API_KEY": st.session_state.env_vars["GOOGLE_API_KEY"],
+    })
+    api_key = os.getenv("GOOGLE_API_KEY")
+
+    if api_key:
+        return ChatGoogleGenerativeAI(
+            google_api_key=api_key,
+            model=model,
+            temperature=temperature,
+            convert_system_message_to_human=True
+        )
+    else:
+        raise ValueError("Google API key not set in .env file")
+
 def create_ollama_llm(model, temperature):
     host = st.session_state.env_vars["OLLAMA_HOST"]
     if host:
         switch_environment({
-            "OPENAI_API_KEY": "ollama",  # Nastaví OpenAI API klíč na "ollama"
-            "OPENAI_API_BASE": host,    # Nastaví OpenAI API Base na hodnotu OLLAMA_HOST
+            "OPENAI_API_KEY": "ollama",
+            "OPENAI_API_BASE": host,
         })
         return LLM(model=model, temperature=temperature, base_url=host)
     else:
         raise ValueError("Ollama Host is not set in .env file")
-    
+
 def create_lmstudio_llm(model, temperature):
     switch_environment({
         "OPENAI_API_KEY": "lm-studio",
@@ -110,8 +128,12 @@ LLM_CONFIG = {
         "create_llm": create_openai_llm,
     },
     "Groq": {
-        "models": ["groq/llama3-8b-8192", "groq/llama3-70b-8192", "groq/mixtral-8x7b-32768"],
+        "models": ["llama3-8b-8192", "llama3-70b-8192", "mixtral-8x7b-32768"],
         "create_llm": create_groq_llm,
+    },
+    "Google": {
+        "models": ["gemini-1.5-pro", "gemini-1.5-flash"],
+        "create_llm": create_google_llm,
     },
     "Ollama": {
         "models": os.getenv("OLLAMA_MODELS", "").split(",") if os.getenv("OLLAMA_MODELS") else [],
@@ -136,7 +158,7 @@ def create_llm(provider_and_model, temperature=0.15):
 
     if create_llm_func:
         llm = create_llm_func(model, temperature)
-        restore_environment()  # Obnoví původní prostředí po vytvoření LLM
+        restore_environment()
         return llm
     else:
         raise ValueError(f"LLM provider {provider} is not recognized or not supported")
